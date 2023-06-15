@@ -4,6 +4,7 @@ use std::ops::{DerefMut, Deref};
 pub enum Activation {
     None,
     Relu,
+    Sigmoid,
 }
 
 impl Activation {
@@ -18,6 +19,7 @@ impl Activation {
         match activation {
             Activation::None => input,
             Activation::Relu => Self::relu(input),
+            Activation::Sigmoid => Self::sigmoid(input)
         }
     }
 
@@ -26,6 +28,10 @@ impl Activation {
             true => input,
             false => 0.0
         }
+    }
+
+    pub fn sigmoid(input : f64) -> f64 {
+        1.0 / (1.0 + (-input).exp())
     }
 }
 
@@ -83,7 +89,30 @@ impl Model {
             .unwrap()
     }
 
-    pub fn to_trained(&self, training_data : Vec<(Vec<f64>, f64)>, epochs: usize) -> Model {
+    fn forward_prop(&self, input : Vec<f64>) -> (Vec<f64>,f64) {
+        let a1 = self[0].evaluate(&input);
+        let a2 = self[0].evaluate(&a1)[0];
+        
+        (a1,a2)
+    }
+
+    fn backward_prop(&self, a1 : Vec<f64>, a2 : f64, input: Vec<f64>, expected : f64) -> (Vec<Vec<f64>>, Vec<f64>){
+        let da_2 = 2.0 * (a2 - expected); 
+        let dz_2 = da_2 * (a2 * (1.0-a2));
+        let dw_2 : Vec<f64> = a1.iter().map(|x| x * dz_2).collect();
+
+        let da_1 : Vec<f64> = self[1].weights[0].iter().map(|x| x * dz_2).collect();
+        let deriv_sig_z1 : Vec<f64> = a1.iter().map(|x| x * (1.0 - x)).collect();
+        let dz_1 = da_1.iter()
+            .zip(deriv_sig_z1.iter())
+            .fold(0.0, |acc, (x,y)| acc + x * y);
+
+        let dw_1 = vec![vec![dz_1 * input[0], dz_1 * input[1]]; 2];
+
+        (dw_1, dw_2)
+    }
+
+    pub fn to_trained(&self, training_data : Vec<(Vec<f64>, f64)>, epochs: usize, rate: f64) -> Model {
         let mut trained : Model = self.clone();
         println!("LAYERS : {}" ,trained.len());
 
@@ -94,22 +123,37 @@ impl Model {
 
             let mut average_cost : f64 = 0.0;
 
-            for (input, output) in &training_data {
-                let epoch_cost = trained.cost(&input, *output);
-                let current_weights = &trained[0].weights;
-                let current_biases = trained[0].biases.clone();
+            for (input, output) in &training_data {                
+                let (a1, a2) = trained.forward_prop(input.to_vec());
+                let (dw_1, dw_2) = trained.backward_prop(a1, a2, input.to_vec(), *output);
 
-                let mut new_weights : Vec<Vec<f64>> = vec![vec![0.0 ; 2]; 2];
-                let mut new_biases : Vec<Vec<f64>> = vec![vec![0.0 ; 2]; 2];
-                
-                let layer_eval = self[0].evaluate(input);
-                
-                for (num, neuron) in current_weights.iter().enumerate() {
-                    new_weights[num][0] = neuron[0] - (Activation::relu(input[0]) * input[0]) * (2.0 * layer_eval[0] + 2.0 * layer_eval[1] - 2.0 * output) * 0.003; 
-                    new_weights[num][1] = neuron[1] - (Activation::relu(input[1]) * input[1]) * (2.0 * layer_eval[0] + 2.0 * layer_eval[1] - 2.0 * output) * 0.003;
-                } 
+                let scaled_dw_1 : Vec<Vec<f64>> = dw_1.iter()
+                    .map(|row| row
+                        .iter()
+                        .map(|x| x * rate)
+                        .collect()
+                    )
+                    .collect();
 
-                trained = trained.to_updated(Layer::new(new_weights, current_biases, self[0].activation.clone()), 0).unwrap();
+                let scaled_dw_2 : Vec<f64> = dw_2.iter()
+                    .map(|x| x * rate)
+                    .collect();
+
+                let mut w_1 : Vec<Vec<f64>> = scaled_dw_1;
+                let mut w_2 : Vec<Vec<f64>> = vec![scaled_dw_2];
+
+                for i in 0..w_1.len() {
+                    for j in 0..w_1[i].len() {
+                        w_1[i][j] = trained[0].weights[i][j] - w_1[i][j];
+                     }
+                }
+
+                for i in 0..w_2.len() {
+                    w_2[0][i] = trained[1].weights[0][i] - w_2[0][i];
+                }
+                
+                trained = trained.to_updated(Layer::new(w_1, trained[0].biases.clone(), trained[0].activation.clone()), 0).unwrap();
+                trained = trained.to_updated(Layer::new(w_2, trained[1].biases.clone(), trained[1].activation.clone()), 1).unwrap();
 
                 average_cost += trained.cost(&input, *output);     
             }

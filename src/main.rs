@@ -3,9 +3,9 @@ use model::{Model, Layer, Activation};
 
 fn main() {
     let mut layers : Vec<Layer> = vec![];
-    let weights = vec![vec![-5.0, 5.0], vec![3.0, -2.0]];
+    let weights = vec![vec![1.0, 2.0], vec![3.0, 4.0]];
     let biases = vec![0.0, 0.0];
-    let hidden_layer_1 = Layer::new(weights,biases, Activation::Relu);
+    let hidden_layer_1 = Layer::new(weights,biases, Activation::Sigmoid);
     layers.push(hidden_layer_1);
     
     let weights = vec![vec![1.0,1.0]];
@@ -30,7 +30,7 @@ fn main() {
 
     dbg!(training_data.clone());
 
-    let model = model.to_trained(training_data, 100);
+    let model = model.to_trained(training_data, 5, 0.2);
     
     let input_1 = vec![0.0,0.0];
     let res_1 = model.evaluate(&input_1);
