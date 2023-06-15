@@ -1,16 +1,16 @@
 mod model;
-use model::{Model, Layer};
+use model::{Model, Layer, Activation};
 
 fn main() {
     let mut layers : Vec<Layer> = vec![];
-    let weights = vec![vec![1.0, 0.0], vec![0.0, 1.0]];
+    let weights = vec![vec![-5.0, 5.0], vec![3.0, -2.0]];
     let biases = vec![0.0, 0.0];
-    let hidden_layer_1 = Layer::new(weights,biases);
+    let hidden_layer_1 = Layer::new(weights,biases, Activation::Relu);
     layers.push(hidden_layer_1);
     
     let weights = vec![vec![1.0,1.0]];
     let biases = vec![0.0,0.0];
-    let output_layer = Layer::new(weights,biases);
+    let output_layer = Layer::new(weights,biases, Activation::None);
     layers.push(output_layer);
 
     let model = Model::from(layers);
@@ -22,15 +22,15 @@ fn main() {
     
     let mut training_data : Vec<(Vec<f64>,  f64)> = vec![];
 
-    for x in 0..15 {
-        for y in 0..15 {
+    for x in 0..2 {
+        for y in 0..2 {
             training_data.push((vec![(x % 2) as f64, (y % 2) as f64], xor( (x % 2) as f64, (y % 2) as f64)))
         }
     }
 
     dbg!(training_data.clone());
 
-    let model = model.to_trained(training_data, 5);
+    let model = model.to_trained(training_data, 100);
     
     let input_1 = vec![0.0,0.0];
     let res_1 = model.evaluate(&input_1);

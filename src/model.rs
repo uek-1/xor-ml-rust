@@ -1,21 +1,54 @@
 use std::ops::{DerefMut, Deref};
 
+#[derive(Clone, PartialEq)]
+pub enum Activation {
+    None,
+    Relu,
+}
+
+impl Activation {
+    pub fn process_vec(input : Vec<f64>, activation : &Activation) -> Vec<f64> {
+        input
+            .iter()
+            .map(|x| Activation::process_num(*x, activation))
+            .collect()
+    }
+
+    pub fn process_num(input : f64, activation : &Activation) -> f64 {
+        match activation {
+            Activation::None => input,
+            Activation::Relu => Self::relu(input),
+        }
+    }
+
+    pub fn relu(input : f64) -> f64 {
+        match input > 0.0 {
+            true => input,
+            false => 0.0
+        }
+    }
+}
+
+
 #[derive(Clone)]
 pub struct Layer{
     pub weights : Vec<Vec<f64>>,
     pub biases : Vec<f64>,
+    pub activation : Activation,
 }
 
 impl Layer {
-    pub fn new(weights : Vec<Vec<f64>>, biases : Vec<f64>) -> Layer {
+    pub fn new(weights : Vec<Vec<f64>>, biases : Vec<f64>, activation : Activation) -> Layer {
         Layer {
             weights,
-            biases
+            biases,
+            activation
         }
     }
 
     pub fn evaluate(&self, input: &Vec<f64>) -> Vec<f64> {
-        matrix_column_multiply(&self.weights, &input).add_vec(&self.biases)
+        let out : Vec<f64> = matrix_column_multiply(&self.weights, &input).add_vec(&self.biases);
+        Activation::process_vec(out, &self.activation)
     }
 }
 
@@ -43,7 +76,7 @@ impl Model {
     }
 
     pub fn evaluate(&self, input: &Vec<f64>) -> f64 {
-        *self.0
+        *self
             .iter()
             .fold(input.clone(), |temp, layer| layer.evaluate(&temp))
             .get(0)
@@ -59,7 +92,7 @@ impl Model {
 
             dbg!(trained[0].weights.clone());
 
-            let mut total_cost : f64 = 0.0;
+            let mut average_cost : f64 = 0.0;
 
             for (input, output) in &training_data {
                 let epoch_cost = trained.cost(&input, *output);
@@ -67,20 +100,22 @@ impl Model {
                 let current_biases = trained[0].biases.clone();
 
                 let mut new_weights : Vec<Vec<f64>> = vec![vec![0.0 ; 2]; 2];
+                let mut new_biases : Vec<Vec<f64>> = vec![vec![0.0 ; 2]; 2];
                 
-                let h1 = current_weights[0][0] * input[0] + current_weights[0][1] * input[1];
-                let h2 = current_weights[1][0] * input[0] + current_weights[1][1] * input[1];
-
+                let layer_eval = self[0].evaluate(input);
+                
                 for (num, neuron) in current_weights.iter().enumerate() {
-                    new_weights[num][0] = neuron[0] - input[0] * (2.0 * h1 + 2.0 * h2 - 2.0 * output) * 0.001; 
-                    new_weights[num][1] = neuron[1] - input[1] * (2.0 * h1 + 2.0 * h2 - 2.0 * output) * 0.001;
+                    new_weights[num][0] = neuron[0] - (Activation::relu(input[0]) * input[0]) * (2.0 * layer_eval[0] + 2.0 * layer_eval[1] - 2.0 * output) * 0.003; 
+                    new_weights[num][1] = neuron[1] - (Activation::relu(input[1]) * input[1]) * (2.0 * layer_eval[0] + 2.0 * layer_eval[1] - 2.0 * output) * 0.003;
                 } 
 
-                trained = trained.to_updated(Layer::new(new_weights, current_biases), 0).unwrap();
+                trained = trained.to_updated(Layer::new(new_weights, current_biases, self[0].activation.clone()), 0).unwrap();
 
-                total_cost += trained.cost(&input, *output);     
+                average_cost += trained.cost(&input, *output);     
             }
-            println!("TOTAL COST {total_cost}");
+
+            average_cost = average_cost / training_data.len() as f64; 
+            println!("Average Cost {average_cost}");
         }
         
         trained
@@ -160,5 +195,17 @@ mod test {
         let col : Vec<f64> = vec![2.0, 3.0];
         let res = matrix_column_multiply(&mat, &col);
         assert_eq!(res, vec![2.0,3.0]);
+    }
+
+    #[test]
+    fn relu_test_1() {
+        let res = Activation::relu(-2.0);
+        assert_eq!(res, 0.0)
+    }
+
+    #[test]
+    fn relu_test_2() {
+        let res = Activation::relu(2.0);
+        assert_eq!(res, 2.0)
     }
 }
