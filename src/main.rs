@@ -22,12 +22,34 @@ fn main() {
     
     let mut training_data : Vec<(Vec<f64>,  f64)> = vec![];
 
-    for i in 0..5 {
-        training_data.push((vec![i as f64, i as f64], 15.0 * i as f64))
+    for x in 0..15 {
+        for y in 0..15 {
+            training_data.push((vec![(x % 2) as f64, (y % 2) as f64], xor( (x % 2) as f64, (y % 2) as f64)))
+        }
     }
 
-    let model = model.to_trained(training_data, 3);
+    dbg!(training_data.clone());
 
+    let model = model.to_trained(training_data, 5);
+    
+    let input_1 = vec![0.0,0.0];
+    let res_1 = model.evaluate(&input_1);
+    println!("0 XOR 0  = {res_1}");   
+    
+    let input_2 = vec![1.0,0.0];
+    let res_2 = model.evaluate(&input_2);
+    println!("1 XOR 0  = {res_2}");
+
+    let input_3 = vec![1.0,1.0];
+    let res_3 = model.evaluate(&input_3);
+    println!("1 XOR 1  = {res_3}");
 }
-  
+
+fn xor(x : f64, y : f64) -> f64 {
+    if x.floor() + y.floor() == 1.0 {
+        return 1.0
+    }
+
+    0.0
+}
 

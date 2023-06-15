@@ -1,7 +1,9 @@
+use std::ops::{DerefMut, Deref};
+
 #[derive(Clone)]
 pub struct Layer{
-    weights : Vec<Vec<f64>>,
-    biases : Vec<f64>,
+    pub weights : Vec<Vec<f64>>,
+    pub biases : Vec<f64>,
 }
 
 impl Layer {
@@ -17,6 +19,7 @@ impl Layer {
     }
 }
 
+#[derive(Clone)]
 pub struct Model(Vec<Layer>);
 
 impl Model {
@@ -30,6 +33,15 @@ impl Model {
         Model(layers)
     }
 
+    pub fn to_updated(&self, layer : Layer, layer_index : usize) -> Result<Model, &'static str> {
+        if self.len() <= layer_index {
+            return Err("invalid index!");
+        }
+        let mut updated  : Model = self.clone();
+        updated[layer_index] = layer;
+        Ok(updated)
+    }
+
     pub fn evaluate(&self, input: &Vec<f64>) -> f64 {
         *self.0
             .iter()
@@ -39,24 +51,43 @@ impl Model {
     }
 
     pub fn to_trained(&self, training_data : Vec<(Vec<f64>, f64)>, epochs: usize) -> Model {
-
+        let mut trained : Model = self.clone();
+        println!("LAYERS : {}" ,trained.len());
 
         for i in 0..epochs {
             println!("EPOCH {i}");
+
+            dbg!(trained[0].weights.clone());
+
             let mut total_cost : f64 = 0.0;
 
             for (input, output) in &training_data {
-                total_cost += self.cost(&input, *output);       
+                let epoch_cost = trained.cost(&input, *output);
+                let current_weights = &trained[0].weights;
+                let current_biases = trained[0].biases.clone();
+
+                let mut new_weights : Vec<Vec<f64>> = vec![vec![0.0 ; 2]; 2];
+                
+                let h1 = current_weights[0][0] * input[0] + current_weights[0][1] * input[1];
+                let h2 = current_weights[1][0] * input[0] + current_weights[1][1] * input[1];
+
+                for (num, neuron) in current_weights.iter().enumerate() {
+                    new_weights[num][0] = neuron[0] - input[0] * (2.0 * h1 + 2.0 * h2 - 2.0 * output) * 0.001; 
+                    new_weights[num][1] = neuron[1] - input[1] * (2.0 * h1 + 2.0 * h2 - 2.0 * output) * 0.001;
+                } 
+
+                trained = trained.to_updated(Layer::new(new_weights, current_biases), 0).unwrap();
+
+                total_cost += trained.cost(&input, *output);     
             }
             println!("TOTAL COST {total_cost}");
         }
-
-        Model::new()
-        //single hidden layer. 
+        
+        trained
     }
 
     fn cost(&self, input : &Vec<f64>, expected : f64) -> f64 {
-        (expected - self.evaluate(input)).abs()
+        (expected - self.evaluate(input)) *  (expected - self.evaluate(input))
     }
 
 
@@ -65,6 +96,20 @@ impl Model {
 impl From<Vec<Layer>> for Model {
     fn from(layers : Vec<Layer>) -> Model {
         Model(layers)
+    }
+}
+
+impl Deref for Model {
+    type Target = Vec<Layer>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Model {
+    fn deref_mut(&mut self) -> &mut Vec<Layer> {
+        &mut self.0
     }
 }
 
