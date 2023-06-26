@@ -1,6 +1,6 @@
 use std::ops::{DerefMut, Deref};
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Activation {
     None,
     Relu,
@@ -36,7 +36,7 @@ impl Activation {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Layer{
     pub weights : Vec<Vec<f64>>,
     pub biases : Vec<f64>,
@@ -56,9 +56,13 @@ impl Layer {
         let out : Vec<f64> = matrix_column_multiply(&self.weights, &input).add_vec(&self.biases);
         Activation::process_vec(out, &self.activation)
     }
+
+    pub fn neurate(&self, input: &Vec<f64>) -> Vec<f64> {
+        matrix_column_multiply(&self.weights, &input)
+    }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Model(Vec<Layer>);
 
 impl Model {
@@ -89,25 +93,40 @@ impl Model {
             .unwrap()
     }
 
-    fn forward_prop(&self, input : Vec<f64>) -> (Vec<f64>,f64) {
+    fn forward_prop(&self, input : Vec<f64>) -> (Vec<f64>, f64, Vec<f64>,f64) {
         let a1 = self[0].evaluate(&input);
-        let a2 = self[0].evaluate(&a1)[0];
-        
-        (a1,a2)
+        let z1 = self[0].neurate(&input);
+        let a2 = self[1].evaluate(&a1)[0];
+        let z2 = self[1].neurate(&a1)[0];
+       
+        //assert_eq!(a2, z2);
+        (z1, z2, a1,a2)
     }
 
-    fn backward_prop(&self, a1 : Vec<f64>, a2 : f64, input: Vec<f64>, expected : f64) -> (Vec<Vec<f64>>, Vec<f64>){
-        let da_2 = 2.0 * (a2 - expected); 
-        let dz_2 = da_2 * (a2 * (1.0-a2));
+    pub fn backward_prop(&self, z1 : Vec<f64>, z2: f64, a1 : Vec<f64>, a2 : f64, input: Vec<f64>, expected : f64) -> (Vec<Vec<f64>>, Vec<f64>){
+        // 1 x 1
+        let da_2 = -2.0 * (expected - a2); 
+        let dz_2 = da_2 * 1.0;
+        // 1 x 2
         let dw_2 : Vec<f64> = a1.iter().map(|x| x * dz_2).collect();
-
+        //println!("expected {expected} from a2 : {a2}, input {:?} original weights {:?} change : {:?}", input, self[1].weights[0], dw_2);
+        
+        // 1 x 2
         let da_1 : Vec<f64> = self[1].weights[0].iter().map(|x| x * dz_2).collect();
-        let deriv_sig_z1 : Vec<f64> = a1.iter().map(|x| x * (1.0 - x)).collect();
-        let dz_1 = da_1.iter()
-            .zip(deriv_sig_z1.iter())
-            .fold(0.0, |acc, (x,y)| acc + x * y);
 
-        let dw_1 = vec![vec![dz_1 * input[0], dz_1 * input[1]]; 2];
+        let deriv_sig_z1 : Vec<f64> = a1.iter().map(|a1| a1 * (1.0 - a1)).collect();
+        let dz_1 : Vec<f64> = da_1.iter()
+            .zip(deriv_sig_z1.iter())
+            .map(|(x,y)| x * y)
+            .collect();
+        
+        // 2 x 2
+        let dw_1 = dz_1
+            .iter()
+            .map(
+                |neuron| input.iter().map(|x| x * neuron).collect() 
+            )
+            .collect();
 
         (dw_1, dw_2)
     }
@@ -118,14 +137,14 @@ impl Model {
 
         for i in 0..epochs {
             println!("EPOCH {i}");
-
-            dbg!(trained[0].weights.clone());
-
+            
+            //println!("{:?}", trained);
+            
             let mut average_cost : f64 = 0.0;
 
             for (input, output) in &training_data {                
-                let (a1, a2) = trained.forward_prop(input.to_vec());
-                let (dw_1, dw_2) = trained.backward_prop(a1, a2, input.to_vec(), *output);
+                let (z1, z2, a1, a2) = trained.forward_prop(input.to_vec());
+                let (dw_1, dw_2) = trained.backward_prop(z1, z2, a1, a2, input.to_vec(), *output);
 
                 let scaled_dw_1 : Vec<Vec<f64>> = dw_1.iter()
                     .map(|row| row
