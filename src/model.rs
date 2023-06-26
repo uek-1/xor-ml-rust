@@ -103,32 +103,66 @@ impl Model {
         (z1, z2, a1,a2)
     }
 
-    pub fn backward_prop(&self, z1 : Vec<f64>, z2: f64, a1 : Vec<f64>, a2 : f64, input: Vec<f64>, expected : f64) -> (Vec<Vec<f64>>, Vec<f64>){
+    pub fn backward_prop(&self, z1 : Vec<f64>, z2: f64, activation_1 : Vec<f64>, activation_2 : f64, input: Vec<f64>, expected : f64) -> (Vec<Vec<f64>>, Vec<f64>){
         // 1 x 1
-        let da_2 = -2.0 * (expected - a2); 
-        let dz_2 = da_2 * 1.0;
+        let partial_loss_activation_2 = -2.0 * (expected - activation_2); 
+        let partial_loss_neuron_2 = partial_loss_activation_2 * 1.0;
         // 1 x 2
-        let dw_2 : Vec<f64> = a1.iter().map(|x| x * dz_2).collect();
-        //println!("expected {expected} from a2 : {a2}, input {:?} original weights {:?} change : {:?}", input, self[1].weights[0], dw_2);
+        let partial_loss_weights_2 : Vec<f64> = activation_1.iter().map(|x| x * partial_loss_neuron_2).collect();
         
         // 1 x 2
-        let da_1 : Vec<f64> = self[1].weights[0].iter().map(|x| x * dz_2).collect();
+        let partial_loss_activation_1 : Vec<f64> = self[1].weights[0].iter().map(|w_2| partial_loss_neuron_2 * w_2).collect();
+        
+        // Sigmoid derivative
+        let partial_activation_neuron_1 : Vec<f64> = activation_1.iter().map(|a1| a1 * (1.0 - a1)).collect();
 
-        let deriv_sig_z1 : Vec<f64> = a1.iter().map(|a1| a1 * (1.0 - a1)).collect();
-        let dz_1 : Vec<f64> = da_1.iter()
-            .zip(deriv_sig_z1.iter())
+        let partial_loss_neuron_1 : Vec<f64> = partial_loss_activation_1.iter()
+            .zip(partial_activation_neuron_1.iter())
             .map(|(x,y)| x * y)
             .collect();
         
         // 2 x 2
-        let dw_1 = dz_1
+        let partial_loss_weights_1 = partial_loss_neuron_1
             .iter()
             .map(
                 |neuron| input.iter().map(|x| x * neuron).collect() 
             )
             .collect();
 
-        (dw_1, dw_2)
+        (partial_loss_weights_1, partial_loss_weights_2)
+    }
+
+    fn debug_gradient_check(&self, dw_1 : Vec<Vec<f64>>, dw_2 : Vec<f64>, input : Vec<f64>, output: f64) {
+        let epsilon = 0.0001;
+        for row in 0..dw_1.len() {
+            for col in 0..dw_1[row].len() {
+                let weight = dw_1[row][col] ;
+                let mut increment = self[0].clone();
+                increment.weights[row][col] += epsilon;
+                
+                let mut decrement = self[0].clone();
+                decrement.weights[row][col] -= epsilon;
+
+                let model_increment = self.clone().to_updated(increment, 0).unwrap();
+                let model_decrement = self.clone().to_updated(decrement, 0).unwrap(); 
+                let res = (model_increment.cost(&input, output) - model_decrement.cost(&input, output)) / (2.0 * epsilon);
+                assert!((weight - res).abs() < epsilon);
+            }
+        }
+
+        for col in 0..dw_2.len() {
+            let weight = dw_2[col];
+            let mut increment = self[1].clone();
+            increment.weights[0][col] += epsilon;
+            
+            let mut decrement = self[1].clone();
+            decrement.weights[0][col] -= epsilon;
+
+            let model_increment = self.clone().to_updated(increment, 1).unwrap();
+            let model_decrement = self.clone().to_updated(decrement, 1).unwrap(); 
+            let res = (model_increment.cost(&input, output) - model_decrement.cost(&input, output)) / (2.0 * epsilon);
+            assert!((weight - res).abs() < epsilon);
+        }
     }
 
     pub fn to_trained(&self, training_data : Vec<(Vec<f64>, f64)>, epochs: usize, rate: f64) -> Model {
@@ -145,6 +179,8 @@ impl Model {
             for (input, output) in &training_data {                
                 let (z1, z2, a1, a2) = trained.forward_prop(input.to_vec());
                 let (dw_1, dw_2) = trained.backward_prop(z1, z2, a1, a2, input.to_vec(), *output);
+                
+                trained.debug_gradient_check(dw_1.clone(), dw_2.clone(), input.clone(), output.clone());
 
                 let scaled_dw_1 : Vec<Vec<f64>> = dw_1.iter()
                     .map(|row| row
@@ -171,8 +207,9 @@ impl Model {
                     w_2[0][i] = trained[1].weights[0][i] - w_2[0][i];
                 }
                 
-                trained = trained.to_updated(Layer::new(w_1, trained[0].biases.clone(), trained[0].activation.clone()), 0).unwrap();
-                trained = trained.to_updated(Layer::new(w_2, trained[1].biases.clone(), trained[1].activation.clone()), 1).unwrap();
+                trained = trained
+                    .to_updated(Layer::new(w_1, trained[0].biases.clone(), trained[0].activation.clone()), 0).unwrap()
+                    .to_updated(Layer::new(w_2, trained[1].biases.clone(), trained[1].activation.clone()), 1).unwrap();
 
                 average_cost += trained.cost(&input, *output);     
             }
@@ -184,7 +221,7 @@ impl Model {
         trained
     }
 
-    fn cost(&self, input : &Vec<f64>, expected : f64) -> f64 {
+    pub fn cost(&self, input : &Vec<f64>, expected : f64) -> f64 {
         (expected - self.evaluate(input)) *  (expected - self.evaluate(input))
     }
 
@@ -258,6 +295,14 @@ mod test {
         let col : Vec<f64> = vec![2.0, 3.0];
         let res = matrix_column_multiply(&mat, &col);
         assert_eq!(res, vec![2.0,3.0]);
+    }
+
+    #[test]
+    fn matrix_column_multiply_test_2() {
+        let mat : Vec<Vec<f64>> = vec![vec![1.0, 2.0], vec![3.0, 4.0]];
+        let col : Vec<f64> = vec![5.0, 6.0];
+        let res = matrix_column_multiply(&mat, &col);
+        assert_eq!(res, vec![17.0, 39.0])
     }
 
     #[test]

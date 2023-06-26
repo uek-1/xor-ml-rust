@@ -1,10 +1,11 @@
 mod model;
 use model::{Model, Layer, Activation};
-use rand::{Rng, rngs::ThreadRng};
+use rand::{Rng, rngs::ThreadRng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
 
 fn main() {
-    let mut rng = rand::thread_rng();
-    let numb_gen = |rng : &mut ThreadRng| rng.gen_range(-10.0..10.0);
+    let mut rng = ChaCha8Rng::seed_from_u64(1);
+    let numb_gen = |rng : &mut ChaCha8Rng| rng.gen_range(0.5..1.0);
 
     let mut layers : Vec<Layer> = vec![];
     let weights = vec![vec![numb_gen(&mut rng), numb_gen(&mut rng)], vec![numb_gen(&mut rng), numb_gen(&mut rng)]];
